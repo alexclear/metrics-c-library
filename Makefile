@@ -1,4 +1,4 @@
-all: libprometheus.so.1.0
+all: libprometheus.so.1.0 test
 
 install: libprometheus.so.1.0
 	install -m 0644 libprometheus.so.1.0 /usr/lib/libprometheus.so.1.0
@@ -7,6 +7,9 @@ install: libprometheus.so.1.0
 	ln -s /usr/lib/libprometheus.so.1.0 /usr/lib/libprometheus.so.1
 	test -L /usr/lib/libprometheus.so && unlink /usr/lib/libprometheus.so
 	ln -s /usr/lib/libprometheus.so.1 /usr/lib/libprometheus.so
+
+test: main.o prometheus.o
+	gcc -g main.o prometheus.o -lglib-2.0 -o test
 
 libprometheus.so.1.0: prometheus.o
 	gcc -shared -fPIC -Wl,-soname,libprometheus.so.1 -o libprometheus.so.1.0 ./prometheus.o -lglib-2.0

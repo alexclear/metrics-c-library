@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define METRIC_TYPE_COUNTER "counter"
+
 GHashTable *metrics_storage = NULL;
 
 typedef struct {
 	char *help;
+	char *type;
 	GHashTable *labeled_metric;
 } Metric;
 
@@ -38,6 +41,7 @@ int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
 
 	counter = (Metric*) malloc(sizeof(Metric));
 	(*counter).help = help;
+	(*counter).type = METRIC_TYPE_COUNTER;
 	(*counter).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	int* val = (int *) malloc(sizeof(int));
 	(*val) = 0;
@@ -98,6 +102,7 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 
 	histogram = malloc(sizeof(Metric));
 	(*histogram).help = help;
+	(*histogram).type = "histogram";
 	(*histogram).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	Buckets* buckets = malloc(sizeof(Buckets));
 	(*buckets).number_buckets = nbuckets;
@@ -187,6 +192,25 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	return TRUE;
 }
 
+void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
+	Metric *pmetric = (Metric*) gpmetric;
+	fprintf(stderr, "Label name: %s\n", ((GString*) label_name)->str);
+}
+
+void print_metric(gpointer key, gpointer user_data) {
+	Metric *metric = g_hash_table_lookup(metrics_storage, key);
+	if(metric == NULL) {
+		fprintf(stderr, "Can't find a metric named %s\n", key);
+		exit(-1);
+	}
+	fprintf(stderr, "# HELP %s %s\n", (char*) key, metric->help);
+	fprintf(stderr, "# TYPE %s %s\n", (char*) key, metric->type);
+	if(strcmp(METRIC_TYPE_COUNTER, metric->type) == 0) {
+		g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), print_labeled_metric, metric);
+	}
+}
+
 int print_metrics() {
+	g_list_foreach(g_hash_table_get_keys(metrics_storage), print_metric, NULL);
 	return TRUE;
 }

@@ -34,6 +34,7 @@ int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
 	if(g_hash_table_insert(metrics_storage, name, counter) == FALSE) {
 		return FALSE;
 	}
+	fprintf(stderr, "new_counter_vec succeeded\n");
 }
 
 int increment_counter(char* name, char** labels, int nlabels) {
@@ -47,7 +48,7 @@ int increment_counter(char* name, char** labels, int nlabels) {
 	if(counter != NULL) {
 		int* val = g_hash_table_lookup((*counter).labeled_metric, key_string);
 		if(val != NULL) {
-			fprintf(stderr, "Old counter value: %i", (*val));
+			fprintf(stderr, "Old counter value: %i\n", (*val));
 		} else {
 			fprintf(stderr, "Failed to lookup counter's value, it is NULL\n");
 			return FALSE;
@@ -55,7 +56,7 @@ int increment_counter(char* name, char** labels, int nlabels) {
 		(*val)++;
 		g_hash_table_replace((*counter).labeled_metric, key_string, val);
 	} else {
-		fprintf(stderr, "Failed to lookup a counter, it is NULL");
+		fprintf(stderr, "Failed to lookup a counter, it is NULL\n");
 		return FALSE;
 	}
 	return TRUE;

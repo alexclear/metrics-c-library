@@ -12,10 +12,12 @@ typedef struct {
 
 typedef struct {
 	double margin;
+	unsigned int count;
 } Bucket;
 
 typedef struct {
-	unsigned int number;
+	unsigned int number_buckets;
+	unsigned int total_count;
 	Bucket** internal_buckets;
 } Buckets;
 
@@ -78,6 +80,7 @@ int increment_counter(char* name, char** labels, int nlabels) {
 }
 
 int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double* bucket_margins, int nbuckets) {
+	double previous_margin = 0;
 	int i=0;
 	// Initialize a hash table
 	// TODO: do it only once (set a lock)
@@ -97,12 +100,43 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 	(*histogram).help = help;
 	(*histogram).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	Buckets* buckets = malloc(sizeof(Buckets));
-	(*buckets).number = nbuckets;
-	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * nlabels);
+	(*buckets).number_buckets = nbuckets;
+	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * nbuckets);
 	for(i=0; i<nbuckets; i++) {
-		fprintf(stderr, "Pointer: %d\n", &((*buckets).internal_buckets[i]));
+		int j;
+		//fprintf(stderr, "Pointer: %d, margin: %f\n", &((*buckets).internal_buckets[i]), bucket_margins[i]);
+		//fprintf(stderr, "1==========\n");
+		//for(j=0; j<i; j++) {
+		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
+		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
+		//}
+		//fprintf(stderr, "!=========!\n");
 		(*buckets).internal_buckets[i] = malloc(sizeof(Bucket));
+		//fprintf(stderr, "2==========\n");
+		//for(j=0; j<i; j++) {
+		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
+		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
+		//}
+		//fprintf(stderr, "!=========!\n");
 		(*((*buckets).internal_buckets[i])).margin = bucket_margins[i];
+		//fprintf(stderr, "3==========\n");
+		//for(j=0; j<i; j++) {
+		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
+		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
+		//}
+		//fprintf(stderr, "!=========!\n");
+		fprintf(stderr, "Pointer: %d, margin: %f, margin': %f\n", &((*((*buckets).internal_buckets[i])).margin), bucket_margins[i], (*((*buckets).internal_buckets[i])).margin);
+		if(bucket_margins[i] < previous_margin) {
+			fprintf(stderr, "Margins are not properly sorted!\n");
+			exit(-1);
+		}
+		previous_margin = bucket_margins[i];
+		//fprintf(stderr, "4==========\n");
+		//for(j=0; j<i; j++) {
+		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
+		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
+		//}
+		//fprintf(stderr, "!=========!\n");
 	}
 	GString *key_string = g_string_new("");
 	for(i=0; i<nlabels; i++) {
@@ -114,11 +148,15 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 	if(g_hash_table_insert(metrics_storage, name, histogram) == FALSE) {
 		return FALSE;
 	}
+	for(i=0; i<nbuckets; i++) {
+		Bucket* bucket = (*buckets).internal_buckets[i];
+		fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
+	}
 	fprintf(stderr, "new_histogram_vec succeeded\n");
 }
 
 int observe_histogram(char* name, char** labels, int nlabels, double value) {
-	int i;
+	int i, val_index;
 	Metric *histogram = g_hash_table_lookup(metrics_storage, name);
 	if(histogram == NULL) {
 		fprintf(stderr, "Can't find a histogram named %s\n", name);
@@ -133,14 +171,20 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 		fprintf(stderr, "Failed to find buckets, they are NULL\n");
 		return FALSE;
 	}
-	fprintf(stderr, "Number: %d\n", (*buckets).number);
-	for(i=0; i<(*buckets).number; i++) {
-		fprintf(stderr, "1\n");
+	fprintf(stderr, "Number: %d\n", (*buckets).number_buckets);
+	for(i=0; i<(*buckets).number_buckets; i++) {
+		//fprintf(stderr, "1\n");
 		Bucket* bucket = (*buckets).internal_buckets[i];
-		fprintf(stderr, "2\n");
-		fprintf(stderr, "Margin: %f\n", (*bucket).margin);
+		//fprintf(stderr, "2\n");
+		fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
+		if((*bucket).margin > value) {
+			break;
+		}
 	}
-	return FALSE;
+	val_index = i;
+	(*((*buckets).internal_buckets[val_index])).count++;
+	(*buckets).total_count++;
+	return TRUE;
 }
 
 int print_metrics() {

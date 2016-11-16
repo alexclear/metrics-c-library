@@ -256,7 +256,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
 				fprintf(stderr, "} ");
 			}
@@ -269,7 +269,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 				if(pmetric->number_labels > 0) {
 					fprintf(stderr, "{");
 					for(i=0; i < (*pmetric).number_labels; i++) {
-						fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+						fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 					}
 					fprintf(stderr, "le=\"%f\",", buckets->internal_buckets[j]->margin);
 					fprintf(stderr, "}");
@@ -282,7 +282,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
 				fprintf(stderr, "le=\"+Inf\",");
 				fprintf(stderr, "}");
@@ -292,7 +292,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
 				fprintf(stderr, "}");
 			}
@@ -301,7 +301,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
 				fprintf(stderr, "}");
 			}

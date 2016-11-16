@@ -215,7 +215,7 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 	int i;
 	Metric *pmetric = (Metric*) gpmetric;
-	fprintf(stderr, "Key: %s\n", ((GString*) label_name)->str);
+	//fprintf(stderr, "Key: %s\n", ((GString*) label_name)->str);
 	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
 	if(val != NULL) {
 //		fprintf(stderr, "Label name: %s\n", val->labels[i]);
@@ -224,11 +224,11 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "label,");
+					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
 				}
 				fprintf(stderr, "} ");
 			}
-			fprintf(stderr, "%f\n", *((int*) val->value));
+			fprintf(stderr, "%f\n", (float) *((int*) val->value));
 		}
 	} else {
 		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");

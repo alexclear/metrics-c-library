@@ -114,6 +114,7 @@ ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
 	fprintf(stderr, "Number of buckets: %d\n", histogram->number_buckets);
 	Buckets* buckets = malloc(sizeof(Buckets));
 	(*buckets).number_buckets = histogram->number_buckets;
+	(*buckets).total_count = 0;
 	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * histogram->number_buckets);
 	for(i=0; i < histogram->number_buckets; i++) {
 		int j;
@@ -132,6 +133,7 @@ ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
 		//}
 		//fprintf(stderr, "!=========!\n");
 		(*((*buckets).internal_buckets[i])).margin = histogram->bucket_margins[i];
+		(*((*buckets).internal_buckets[i])).count = 0;
 		//fprintf(stderr, "3==========\n");
 		//for(j=0; j<i; j++) {
 		//	Bucket* bucket1 = (*buckets).internal_buckets[j];

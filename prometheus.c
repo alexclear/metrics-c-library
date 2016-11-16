@@ -29,6 +29,7 @@ typedef struct {
 typedef struct {
 	unsigned int number_buckets;
 	unsigned int total_count;
+	double total_sum;
 	Bucket** internal_buckets;
 } Buckets;
 
@@ -53,20 +54,6 @@ int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
 	(*counter).type = METRIC_TYPE_COUNTER;
 	(*counter).number_labels = nlabels;
 	(*counter).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
-	int* val = (int *) malloc(sizeof(int));
-	(*val) = 0;
-	ConcreteValue* concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
-	(*concrete_val).labels = malloc(sizeof(char*) * nlabels);
-	concrete_val->value = val;
-	GString *key_string = g_string_new("");
-	for(i=0; i<nlabels; i++) {
-		key_string = g_string_append(key_string, labels[i]);
-		(*concrete_val).labels[i] = malloc(strlen(labels[i]) + 1);
-		strncpy((*concrete_val).labels[i], labels[i], strlen(labels[i]) + 1);
-	}
-	if(g_hash_table_insert((*counter).labeled_metric, key_string, concrete_val) == FALSE) {
-		return FALSE;
-	}
 	if(g_hash_table_insert(metrics_storage, name, counter) == FALSE) {
 		return FALSE;
 	}
@@ -86,8 +73,20 @@ int increment_counter(char* name, char** labels, int nlabels) {
 		if(concrete_val != NULL) {
 			fprintf(stderr, "Old counter value: %i\n", *((int*) concrete_val->value));
 		} else {
-			fprintf(stderr, "Failed to lookup counter's value, it is NULL\n");
-			return FALSE;
+			int* val = (int *) malloc(sizeof(int));
+			(*val) = 0;
+			concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
+			(*concrete_val).labels = malloc(sizeof(char*) * nlabels);
+			concrete_val->value = val;
+			GString *key_string = g_string_new("");
+			for(i=0; i<nlabels; i++) {
+				key_string = g_string_append(key_string, labels[i]);
+				(*concrete_val).labels[i] = malloc(strlen(labels[i]) + 1);
+				strncpy((*concrete_val).labels[i], labels[i], strlen(labels[i]) + 1);
+			}
+			if(g_hash_table_insert((*counter).labeled_metric, key_string, concrete_val) == FALSE) {
+				return FALSE;
+			}
 		}
 		(*((int*) concrete_val->value))++;
 	} else {
@@ -210,6 +209,7 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	val_index = i;
 	(*((*((Buckets*) concrete_val->value)).internal_buckets[val_index])).count++;
 	(*((Buckets*) concrete_val->value)).total_count++;
+	(*((Buckets*) concrete_val->value)).total_sum += value;
 	return TRUE;
 }
 
@@ -266,6 +266,15 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 				fprintf(stderr, "}");
 			}
 			fprintf(stderr, " %f\n", (float) buckets->total_count);
+			fprintf(stderr, "%s_sum", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				fprintf(stderr, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+				}
+				fprintf(stderr, "}");
+			}
+			fprintf(stderr, " %f\n", buckets->total_sum);
 		}
 	} else {
 		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");

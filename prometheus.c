@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #define METRIC_TYPE_COUNTER "counter"
+#define METRIC_TYPE_HISTOGRAM "histogram"
 
 GHashTable *metrics_storage = NULL;
 
@@ -116,7 +117,7 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 	histogram = malloc(sizeof(Metric));
 	(*histogram).help = help;
 	(*histogram).name = name;
-	(*histogram).type = "histogram";
+	(*histogram).type = METRIC_TYPE_HISTOGRAM;
 	(*histogram).number_labels = nlabels;
 	(*histogram).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	Buckets* buckets = malloc(sizeof(Buckets));
@@ -213,7 +214,7 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 }
 
 void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
-	int i;
+	int i, j;
 	Metric *pmetric = (Metric*) gpmetric;
 	//fprintf(stderr, "Key: %s\n", ((GString*) label_name)->str);
 	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
@@ -230,6 +231,21 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			}
 			fprintf(stderr, "%f\n", (float) *((int*) val->value));
 		}
+		if(strcmp((*pmetric).type, METRIC_TYPE_HISTOGRAM) == 0) {
+			Buckets* buckets = (Buckets*) val->value;
+			for(j=0; j < (buckets->number_buckets); j++) {
+				fprintf(stderr, "%s_bucket", (*pmetric).name);
+				if(pmetric->number_labels > 0) {
+					fprintf(stderr, "{");
+					for(i=0; i < (*pmetric).number_labels; i++) {
+						fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+					}
+					fprintf(stderr, "le=\"%f\",", buckets->internal_buckets[j]->margin);
+					fprintf(stderr, "} ");
+				}
+				fprintf(stderr, "%f\n", (float) buckets->internal_buckets[j]->count);
+			}
+		}
 	} else {
 		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");
 		exit(-1);
@@ -244,9 +260,7 @@ void print_metric(gpointer key, gpointer user_data) {
 	}
 	fprintf(stderr, "# HELP %s %s\n", (char*) key, metric->help);
 	fprintf(stderr, "# TYPE %s %s\n", (char*) key, metric->type);
-	if(strcmp(METRIC_TYPE_COUNTER, metric->type) == 0) {
-		g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), print_labeled_metric, metric);
-	}
+	g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), print_labeled_metric, metric);
 }
 
 int print_metrics() {

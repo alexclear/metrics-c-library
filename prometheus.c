@@ -108,7 +108,7 @@ int increment_counter(char* name, char** labels, int nlabels) {
 	return TRUE;
 }
 
-ConcreteValue* initialize_buckets(Histogram *histogram, char* labels) {
+ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
 	int i;
 	double previous_margin = 0;
 	fprintf(stderr, "Number of buckets: %d\n", histogram->number_buckets);
@@ -153,6 +153,7 @@ ConcreteValue* initialize_buckets(Histogram *histogram, char* labels) {
 	}
 	ConcreteValue* concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
 	(*concrete_val).labels = malloc(sizeof(char*) * histogram->metric.number_labels);
+
 	concrete_val->value = buckets;
 	GString *key_string = g_string_new("");
 	for(i=0; i < histogram->metric.number_labels; i++) {

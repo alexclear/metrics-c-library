@@ -2,11 +2,16 @@
 #include <stdio.h>
 
 int main(int arc, char** argv) {
-	char* labels[2];
+	char* label_names[2];
 	int i;
-	labels[0] = "hostname";
-	labels[1] = "username";
-	if(!new_counter_vec("number_of_starts", "This is a number of program starts", labels, 2)) {
+	label_names[0] = "hostname";
+	label_names[1] = "username";
+
+	char* labels[2];
+	labels[0] = "127.0.0.1";
+	labels[1] = "student";
+
+	if(!new_counter_vec("number_of_starts", "This is a number of program starts", label_names, 2)) {
 		fprintf(stderr, "new_counter_vec failed\n");
 		return(-1);
 	}
@@ -70,13 +75,25 @@ int main(int arc, char** argv) {
 	margins[47] = 5000;
 	margins[48] = 10000;
 	margins[49] = 15000;
-	if(!new_histogram_vec("latency_example", "This is a sample for a histogram metric", labels, 2, margins, 50)) {
+	if(!new_histogram_vec("latency_example", "This is a sample for a histogram metric", label_names, 2, margins, 50)) {
 		fprintf(stderr, "new_histogram_vec failed\n");
 		return(-1);
 	}
 	fprintf(stderr, "new_histogram_vec succeeded (in main(...))\n");
 
 	if(!observe_histogram("latency_example", labels, 2, 20.3)) {
+		fprintf(stderr, "observe_histogram failed\n");
+		return(-1);
+	}
+	fprintf(stderr, "observe_histogram succeeded\n");
+
+	if(!observe_histogram("latency_example", labels, 2, 41.2)) {
+		fprintf(stderr, "observe_histogram failed\n");
+		return(-1);
+	}
+	fprintf(stderr, "observe_histogram succeeded\n");
+
+	if(!observe_histogram("latency_example", labels, 2, 55.8)) {
 		fprintf(stderr, "observe_histogram failed\n");
 		return(-1);
 	}

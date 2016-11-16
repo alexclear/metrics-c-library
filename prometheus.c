@@ -16,10 +16,17 @@ typedef struct {
 typedef struct {
 	unsigned int number_labels;
 	char *name;
+	char **label_names;
 	char *help;
 	char *type;
 	GHashTable *labeled_metric;
 } Metric;
+
+typedef struct {
+	Metric metric;
+	unsigned int number_buckets;
+	double *bucket_margins;
+} Histogram;
 
 typedef struct {
 	double margin;
@@ -33,7 +40,7 @@ typedef struct {
 	Bucket** internal_buckets;
 } Buckets;
 
-int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
+int new_counter_vec(char* name, char* help, char** label_names, int nlabels) {
 	int i=0;
 	// Initialize a hash table
 	// TODO: do it only once (set a lock)
@@ -54,6 +61,11 @@ int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
 	(*counter).type = METRIC_TYPE_COUNTER;
 	(*counter).number_labels = nlabels;
 	(*counter).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
+	(*counter).label_names = malloc(sizeof(char*) * nlabels);
+	for(i=0; i<nlabels; i++) {
+		(*counter).label_names[i] = malloc(strlen(label_names[i]) + 1);
+		strncpy((*counter).label_names[i], label_names[i], strlen(label_names[i]) + 1);
+	}
 	if(g_hash_table_insert(metrics_storage, name, counter) == FALSE) {
 		return FALSE;
 	}
@@ -96,33 +108,14 @@ int increment_counter(char* name, char** labels, int nlabels) {
 	return TRUE;
 }
 
-int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double* bucket_margins, int nbuckets) {
+ConcreteValue* initialize_buckets(Histogram *histogram, char* labels) {
+	int i;
 	double previous_margin = 0;
-	int i=0;
-	// Initialize a hash table
-	// TODO: do it only once (set a lock)
-        //     - not applicable in nginx environment
-	if(metrics_storage == NULL) {
-		metrics_storage = g_hash_table_new(g_str_hash, g_str_equal);
-	}
-
-	// TODO: make this thread-safe
-	Metric *histogram = g_hash_table_lookup(metrics_storage, name);
-	if(histogram != NULL) {
-		fprintf(stderr, "Can't register a histogram named %s because there is a metric with that name already!\n", name);
-		return FALSE;
-	}
-
-	histogram = malloc(sizeof(Metric));
-	(*histogram).help = help;
-	(*histogram).name = name;
-	(*histogram).type = METRIC_TYPE_HISTOGRAM;
-	(*histogram).number_labels = nlabels;
-	(*histogram).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
+	fprintf(stderr, "Number of buckets: %d\n", histogram->number_buckets);
 	Buckets* buckets = malloc(sizeof(Buckets));
-	(*buckets).number_buckets = nbuckets;
-	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * nbuckets);
-	for(i=0; i<nbuckets; i++) {
+	(*buckets).number_buckets = histogram->number_buckets;
+	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * histogram->number_buckets);
+	for(i=0; i < histogram->number_buckets; i++) {
 		int j;
 		//fprintf(stderr, "Pointer: %d, margin: %f\n", &((*buckets).internal_buckets[i]), bucket_margins[i]);
 		//fprintf(stderr, "1==========\n");
@@ -138,19 +131,19 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
 		//}
 		//fprintf(stderr, "!=========!\n");
-		(*((*buckets).internal_buckets[i])).margin = bucket_margins[i];
+		(*((*buckets).internal_buckets[i])).margin = histogram->bucket_margins[i];
 		//fprintf(stderr, "3==========\n");
 		//for(j=0; j<i; j++) {
 		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
 		//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket1).margin), (*bucket1).margin);
 		//}
 		//fprintf(stderr, "!=========!\n");
-		fprintf(stderr, "Pointer: %d, margin: %f, margin': %f\n", &((*((*buckets).internal_buckets[i])).margin), bucket_margins[i], (*((*buckets).internal_buckets[i])).margin);
-		if(bucket_margins[i] < previous_margin) {
+		fprintf(stderr, "Pointer: %d, margin: %f, margin': %f\n", &((*((*buckets).internal_buckets[i])).margin), histogram->bucket_margins[i], (*((*buckets).internal_buckets[i])).margin);
+		if(histogram->bucket_margins[i] < previous_margin) {
 			fprintf(stderr, "Margins are not properly sorted!\n");
 			exit(-1);
 		}
-		previous_margin = bucket_margins[i];
+		previous_margin = histogram->bucket_margins[i];
 		//fprintf(stderr, "4==========\n");
 		//for(j=0; j<i; j++) {
 		//	Bucket* bucket1 = (*buckets).internal_buckets[j];
@@ -159,30 +152,65 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 		//fprintf(stderr, "!=========!\n");
 	}
 	ConcreteValue* concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
-	(*concrete_val).labels = malloc(sizeof(char*) * nlabels);
+	(*concrete_val).labels = malloc(sizeof(char*) * histogram->metric.number_labels);
 	concrete_val->value = buckets;
 	GString *key_string = g_string_new("");
-	for(i=0; i<nlabels; i++) {
+	for(i=0; i < histogram->metric.number_labels; i++) {
 		key_string = g_string_append(key_string, labels[i]);
 		(*concrete_val).labels[i] = malloc(strlen(labels[i]) + 1);
 		strncpy((*concrete_val).labels[i], labels[i], strlen(labels[i]) + 1);
 	}
-	if(g_hash_table_insert((*histogram).labeled_metric, key_string, concrete_val) == FALSE) {
+	if(g_hash_table_insert((*histogram).metric.labeled_metric, key_string, concrete_val) == FALSE) {
+		return NULL;
+	}
+	return concrete_val;
+}
+
+int new_histogram_vec(char* name, char* help, char** label_names, int nlabels, double* bucket_margins, int nbuckets) {
+	double previous_margin = 0;
+	int i=0;
+	// Initialize a hash table
+	// TODO: do it only once (set a lock)
+        //     - not applicable in nginx environment
+	if(metrics_storage == NULL) {
+		metrics_storage = g_hash_table_new(g_str_hash, g_str_equal);
+	}
+
+	// TODO: make this thread-safe
+	Histogram *histogram = g_hash_table_lookup(metrics_storage, name);
+	if(histogram != NULL) {
+		fprintf(stderr, "Can't register a histogram named %s because there is a metric with that name already!\n", name);
 		return FALSE;
 	}
+
+	histogram = malloc(sizeof(Histogram));
+	(*histogram).metric.help = help;
+	(*histogram).metric.name = name;
+	(*histogram).metric.type = METRIC_TYPE_HISTOGRAM;
+	(*histogram).metric.number_labels = nlabels;
+	(*histogram).number_buckets = nbuckets;
+	(*histogram).bucket_margins = bucket_margins;
+	(*histogram).metric.label_names = malloc(sizeof(char*) * nlabels);
+	for(i=0; i<nlabels; i++) {
+		(*histogram).metric.label_names[i] = malloc(strlen(label_names[i]) + 1);
+		strncpy((*histogram).metric.label_names[i], label_names[i], strlen(label_names[i]) + 1);
+	}
+	(*histogram).metric.labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	if(g_hash_table_insert(metrics_storage, name, histogram) == FALSE) {
 		return FALSE;
 	}
-	for(i=0; i<nbuckets; i++) {
-		Bucket* bucket = (*buckets).internal_buckets[i];
-		fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
-	}
+	//for(i=0; i<nbuckets; i++) {
+	//	Bucket* bucket = (*buckets).internal_buckets[i];
+	//	fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
+	//}
 	fprintf(stderr, "new_histogram_vec succeeded\n");
 }
 
 int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	int i, val_index;
-	Metric *histogram = g_hash_table_lookup(metrics_storage, name);
+	fprintf(stderr, "Observe_histogram called\n");
+	// TODO: check if number of labels is valid
+	Histogram *histogram = g_hash_table_lookup(metrics_storage, name);
 	if(histogram == NULL) {
 		fprintf(stderr, "Can't find a histogram named %s\n", name);
 		return FALSE;
@@ -191,10 +219,11 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	for(i=0; i<nlabels; i++) {
 		key_string = g_string_append(key_string, labels[i]);
 	}
-	ConcreteValue* concrete_val = g_hash_table_lookup((*histogram).labeled_metric, key_string);
+	ConcreteValue* concrete_val = g_hash_table_lookup((*histogram).metric.labeled_metric, key_string);
 	if(concrete_val == NULL) {
-		fprintf(stderr, "Failed to find buckets, they are NULL\n");
-		return FALSE;
+		fprintf(stderr, "Calling initialize_buckets\n");
+		concrete_val = initialize_buckets(histogram, labels);
+		fprintf(stderr, "initialize_buckets finished\n");
 	}
 	fprintf(stderr, "Number: %d\n", (*((Buckets*) concrete_val->value)).number_buckets);
 	for(i=0; i<(*((Buckets*) concrete_val->value)).number_buckets; i++) {
@@ -210,6 +239,7 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	(*((*((Buckets*) concrete_val->value)).internal_buckets[val_index])).count++;
 	(*((Buckets*) concrete_val->value)).total_count++;
 	(*((Buckets*) concrete_val->value)).total_sum += value;
+	fprintf(stderr, "Observe_histogram finished\n");
 	return TRUE;
 }
 

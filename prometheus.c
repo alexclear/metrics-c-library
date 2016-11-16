@@ -8,6 +8,13 @@
 GHashTable *metrics_storage = NULL;
 
 typedef struct {
+	char **labels;
+	void *value;
+} ConcreteValue;
+
+typedef struct {
+	unsigned int number_labels;
+	char *name;
 	char *help;
 	char *type;
 	GHashTable *labeled_metric;
@@ -41,15 +48,22 @@ int new_counter_vec(char* name, char* help, char** labels, int nlabels) {
 
 	counter = (Metric*) malloc(sizeof(Metric));
 	(*counter).help = help;
+	(*counter).name = name;
 	(*counter).type = METRIC_TYPE_COUNTER;
+	(*counter).number_labels = nlabels;
 	(*counter).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	int* val = (int *) malloc(sizeof(int));
 	(*val) = 0;
+	ConcreteValue* concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
+	(*concrete_val).labels = malloc(sizeof(char*) * nlabels);
+	concrete_val->value = val;
 	GString *key_string = g_string_new("");
 	for(i=0; i<nlabels; i++) {
 		key_string = g_string_append(key_string, labels[i]);
+		(*concrete_val).labels[i] = malloc(strlen(labels[i]) + 1);
+		strncpy((*concrete_val).labels[i], labels[i], strlen(labels[i]) + 1);
 	}
-	if(g_hash_table_insert((*counter).labeled_metric, key_string, val) == FALSE) {
+	if(g_hash_table_insert((*counter).labeled_metric, key_string, concrete_val) == FALSE) {
 		return FALSE;
 	}
 	if(g_hash_table_insert(metrics_storage, name, counter) == FALSE) {
@@ -67,15 +81,14 @@ int increment_counter(char* name, char** labels, int nlabels) {
 	// TODO: make this thread-safe
 	Metric *counter = g_hash_table_lookup(metrics_storage, name);
 	if(counter != NULL) {
-		int* val = g_hash_table_lookup((*counter).labeled_metric, key_string);
-		if(val != NULL) {
-			fprintf(stderr, "Old counter value: %i\n", (*val));
+		ConcreteValue* concrete_val = g_hash_table_lookup((*counter).labeled_metric, key_string);
+		if(concrete_val != NULL) {
+			fprintf(stderr, "Old counter value: %i\n", *((int*) concrete_val->value));
 		} else {
 			fprintf(stderr, "Failed to lookup counter's value, it is NULL\n");
 			return FALSE;
 		}
-		(*val)++;
-		g_hash_table_replace((*counter).labeled_metric, key_string, val);
+		(*((int*) concrete_val->value))++;
 	} else {
 		fprintf(stderr, "Failed to lookup a counter, it is NULL\n");
 		return FALSE;
@@ -102,7 +115,9 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 
 	histogram = malloc(sizeof(Metric));
 	(*histogram).help = help;
+	(*histogram).name = name;
 	(*histogram).type = "histogram";
+	(*histogram).number_labels = nlabels;
 	(*histogram).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
 	Buckets* buckets = malloc(sizeof(Buckets));
 	(*buckets).number_buckets = nbuckets;
@@ -143,11 +158,16 @@ int new_histogram_vec(char* name, char* help, char** labels, int nlabels, double
 		//}
 		//fprintf(stderr, "!=========!\n");
 	}
+	ConcreteValue* concrete_val = (ConcreteValue*) malloc(sizeof(ConcreteValue));
+	(*concrete_val).labels = malloc(sizeof(char*) * nlabels);
+	concrete_val->value = buckets;
 	GString *key_string = g_string_new("");
 	for(i=0; i<nlabels; i++) {
 		key_string = g_string_append(key_string, labels[i]);
+		(*concrete_val).labels[i] = malloc(strlen(labels[i]) + 1);
+		strncpy((*concrete_val).labels[i], labels[i], strlen(labels[i]) + 1);
 	}
-	if(g_hash_table_insert((*histogram).labeled_metric, key_string, buckets) == FALSE) {
+	if(g_hash_table_insert((*histogram).labeled_metric, key_string, concrete_val) == FALSE) {
 		return FALSE;
 	}
 	if(g_hash_table_insert(metrics_storage, name, histogram) == FALSE) {
@@ -171,15 +191,15 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	for(i=0; i<nlabels; i++) {
 		key_string = g_string_append(key_string, labels[i]);
 	}
-	Buckets* buckets = g_hash_table_lookup((*histogram).labeled_metric, key_string);
-	if(buckets == NULL) {
+	ConcreteValue* concrete_val = g_hash_table_lookup((*histogram).labeled_metric, key_string);
+	if(concrete_val == NULL) {
 		fprintf(stderr, "Failed to find buckets, they are NULL\n");
 		return FALSE;
 	}
-	fprintf(stderr, "Number: %d\n", (*buckets).number_buckets);
-	for(i=0; i<(*buckets).number_buckets; i++) {
+	fprintf(stderr, "Number: %d\n", (*((Buckets*) concrete_val->value)).number_buckets);
+	for(i=0; i<(*((Buckets*) concrete_val->value)).number_buckets; i++) {
 		//fprintf(stderr, "1\n");
-		Bucket* bucket = (*buckets).internal_buckets[i];
+		Bucket* bucket = (*((Buckets*) concrete_val->value)).internal_buckets[i];
 		//fprintf(stderr, "2\n");
 		fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
 		if((*bucket).margin > value) {
@@ -187,20 +207,39 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 		}
 	}
 	val_index = i;
-	(*((*buckets).internal_buckets[val_index])).count++;
-	(*buckets).total_count++;
+	(*((*((Buckets*) concrete_val->value)).internal_buckets[val_index])).count++;
+	(*((Buckets*) concrete_val->value)).total_count++;
 	return TRUE;
 }
 
 void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
+	int i;
 	Metric *pmetric = (Metric*) gpmetric;
-	fprintf(stderr, "Label name: %s\n", ((GString*) label_name)->str);
+	fprintf(stderr, "Key: %s\n", ((GString*) label_name)->str);
+	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
+	if(val != NULL) {
+//		fprintf(stderr, "Label name: %s\n", val->labels[i]);
+		if(strcmp((*pmetric).type, METRIC_TYPE_COUNTER) == 0) {
+			fprintf(stderr, "%s", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				fprintf(stderr, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					fprintf(stderr, "label,");
+				}
+				fprintf(stderr, "} ");
+			}
+			fprintf(stderr, "%f\n", *((int*) val->value));
+		}
+	} else {
+		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");
+		exit(-1);
+	}
 }
 
 void print_metric(gpointer key, gpointer user_data) {
 	Metric *metric = g_hash_table_lookup(metrics_storage, key);
 	if(metric == NULL) {
-		fprintf(stderr, "Can't find a metric named %s\n", key);
+		fprintf(stderr, "Can't find a metric named %s\n", (char*) key);
 		exit(-1);
 	}
 	fprintf(stderr, "# HELP %s %s\n", (char*) key, metric->help);

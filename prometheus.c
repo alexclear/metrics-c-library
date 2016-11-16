@@ -245,6 +245,18 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 				}
 				fprintf(stderr, " %f\n", (float) buckets->internal_buckets[j]->count);
 			}
+
+
+			fprintf(stderr, "%s_bucket", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				fprintf(stderr, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					fprintf(stderr, "%s=\"%s\",", val->labels[i], val->labels[i]);
+				}
+				fprintf(stderr, "le=\"+Inf\",");
+				fprintf(stderr, "}");
+			}
+			fprintf(stderr, " %f\n", (float) buckets->total_count);
 			fprintf(stderr, "%s_count", (*pmetric).name);
 			if(pmetric->number_labels > 0) {
 				fprintf(stderr, "{");

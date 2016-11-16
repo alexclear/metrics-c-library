@@ -263,6 +263,7 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 			fprintf(stderr, "%f\n", (float) *((int*) val->value));
 		}
 		if(strcmp((*pmetric).type, METRIC_TYPE_HISTOGRAM) == 0) {
+			int cumulative_count = 0;
 			Buckets* buckets = (Buckets*) val->value;
 			for(j=0; j < (buckets->number_buckets); j++) {
 				fprintf(stderr, "%s_bucket", (*pmetric).name);
@@ -274,7 +275,8 @@ void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
 					fprintf(stderr, "le=\"%f\",", buckets->internal_buckets[j]->margin);
 					fprintf(stderr, "}");
 				}
-				fprintf(stderr, " %f\n", (float) buckets->internal_buckets[j]->count);
+				cumulative_count += buckets->internal_buckets[j]->count;
+				fprintf(stderr, " %f\n", (float) cumulative_count);
 			}
 
 

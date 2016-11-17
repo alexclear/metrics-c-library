@@ -294,3 +294,119 @@ int print_metrics() {
 	g_list_foreach(g_hash_table_get_keys(metrics_storage), print_metric, NULL);
 	return TRUE;
 }
+
+typedef struct {
+	int max_size;
+	char *buffer;
+	int result;
+	Metric *current_metric;
+} ExportContext;
+
+void shift(ExportContext* context, int result) {
+	context->result += result;
+	context->max_size -= result;
+	if(context->max_size <= 0) {
+		fprintf(stderr, "Buffer exhausted\n");
+		exit(-1);
+	}
+}
+
+void msnprintf(ExportContext* context, const char *format, ...) {
+	va_list arglist;
+	va_start(arglist,format);
+	int result = vsnprintf(context->buffer + context->result, context->max_size, format, arglist);
+	va_end(arglist);
+	shift(context, result);
+}
+
+void export_labeled_metric(gpointer label_name, gpointer gcontext) {
+	int i, j, result;
+	ExportContext* context = (ExportContext*) gcontext;
+	Metric *pmetric = context->current_metric;
+	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
+	if(val != NULL) {
+		if(strcmp((*pmetric).type, METRIC_TYPE_COUNTER) == 0) {
+			msnprintf(context, "%s", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				msnprintf(context, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+				}
+				msnprintf(context, "} ");
+			}
+			msnprintf(context, "%f\n", (float) *((int*) val->value));
+		}
+		if(strcmp((*pmetric).type, METRIC_TYPE_HISTOGRAM) == 0) {
+			int cumulative_count = 0;
+			Buckets* buckets = (Buckets*) val->value;
+			for(j=0; j < (buckets->number_buckets); j++) {
+				msnprintf(context, "%s_bucket", (*pmetric).name);
+				if(pmetric->number_labels > 0) {
+					msnprintf(context, "{");
+					for(i=0; i < (*pmetric).number_labels; i++) {
+						msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+					}
+					msnprintf(context, "le=\"%f\",", buckets->internal_buckets[j]->margin);
+					msnprintf(context, "}");
+				}
+				cumulative_count += buckets->internal_buckets[j]->count;
+				msnprintf(context, " %f\n", (float) cumulative_count);
+			}
+
+
+			msnprintf(context, "%s_bucket", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				msnprintf(context, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+				}
+				msnprintf(context, "le=\"+Inf\",");
+				msnprintf(context, "}");
+			}
+			msnprintf(context, " %f\n", (float) buckets->total_count);
+			msnprintf(context, "%s_count", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				msnprintf(context, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+				}
+				msnprintf(context, "}");
+			}
+			msnprintf(context, " %f\n", (float) buckets->total_count);
+			msnprintf(context, "%s_sum", (*pmetric).name);
+			if(pmetric->number_labels > 0) {
+				msnprintf(context, "{");
+				for(i=0; i < (*pmetric).number_labels; i++) {
+					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+				}
+				msnprintf(context, "}");
+			}
+			msnprintf(context, " %f\n", buckets->total_sum);
+		}
+	} else {
+		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");
+		exit(-1);
+	}
+}
+
+void export_metric(gpointer key, gpointer user_data) {
+        ExportContext* context = (ExportContext*) user_data;
+	Metric *metric = g_hash_table_lookup(metrics_storage, key);
+	if(metric == NULL) {
+		fprintf(stderr, "Can't find a metric named %s\n", (char*) key);
+		exit(-1);
+	}
+	msnprintf(context, "# HELP %s %s\n", (char*) key, metric->help);
+	msnprintf(context, "# TYPE %s %s\n", (char*) key, metric->type);
+	context->current_metric = metric;
+	g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), export_labeled_metric, context);
+}
+
+int export_metrics(char* buffer, int max_size) {
+	ExportContext context;
+	context.max_size = max_size;
+	context.result = 0;
+	context.buffer = buffer;
+	g_list_foreach(g_hash_table_get_keys(metrics_storage), export_metric, &context);
+	return context.result;
+}

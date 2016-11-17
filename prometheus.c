@@ -211,7 +211,6 @@ int new_histogram_vec(char* name, char* help, char** label_names, int nlabels, d
 
 int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	int i, val_index;
-	fprintf(stderr, "Observe_histogram called\n");
 	// TODO: check if number of labels is valid
 	Histogram *histogram = g_hash_table_lookup(metrics_storage, name);
 	if(histogram == NULL) {
@@ -228,12 +227,10 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 		concrete_val = initialize_buckets(histogram, labels);
 		fprintf(stderr, "initialize_buckets finished\n");
 	}
-	fprintf(stderr, "Number: %d\n", (*((Buckets*) concrete_val->value)).number_buckets);
 	for(i=0; i<(*((Buckets*) concrete_val->value)).number_buckets; i++) {
 		//fprintf(stderr, "1\n");
 		Bucket* bucket = (*((Buckets*) concrete_val->value)).internal_buckets[i];
 		//fprintf(stderr, "2\n");
-		fprintf(stderr, "Pointer: %d, Margin: %f\n", &((*bucket).margin), (*bucket).margin);
 		if((*bucket).margin > value) {
 			break;
 		}
@@ -242,7 +239,6 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	(*((*((Buckets*) concrete_val->value)).internal_buckets[val_index])).count++;
 	(*((Buckets*) concrete_val->value)).total_count++;
 	(*((Buckets*) concrete_val->value)).total_sum += value;
-	fprintf(stderr, "Observe_histogram finished\n");
 	return TRUE;
 }
 

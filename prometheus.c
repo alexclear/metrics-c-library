@@ -2,6 +2,7 @@
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define METRIC_TYPE_COUNTER "counter"
 #define METRIC_TYPE_HISTOGRAM "histogram"
@@ -70,6 +71,7 @@ int new_counter_vec(char* name, char* help, char** label_names, int nlabels) {
 		return FALSE;
 	}
 	fprintf(stderr, "new_counter_vec succeeded\n");
+	return TRUE;
 }
 
 int increment_counter(char* name, char** labels, int nlabels) {
@@ -108,7 +110,7 @@ int increment_counter(char* name, char** labels, int nlabels) {
 }
 
 ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
-	int i;
+	unsigned int i;
 	double previous_margin = 0;
 	fprintf(stderr, "Number of buckets: %d\n", histogram->number_buckets);
 	Buckets* buckets = malloc(sizeof(Buckets));
@@ -116,11 +118,9 @@ ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
 	(*buckets).total_count = 0;
 	(*buckets).internal_buckets = malloc(sizeof(Bucket*) * histogram->number_buckets);
 	for(i=0; i < histogram->number_buckets; i++) {
-		int j;
 		(*buckets).internal_buckets[i] = malloc(sizeof(Bucket));
 		(*((*buckets).internal_buckets[i])).margin = histogram->bucket_margins[i];
 		(*((*buckets).internal_buckets[i])).count = 0;
-		fprintf(stderr, "Pointer: %d, margin: %f, margin': %f\n", &((*((*buckets).internal_buckets[i])).margin), histogram->bucket_margins[i], (*((*buckets).internal_buckets[i])).margin);
 		if(histogram->bucket_margins[i] < previous_margin) {
 			fprintf(stderr, "Margins are not properly sorted!\n");
 			exit(-1);
@@ -144,7 +144,6 @@ ConcreteValue* initialize_buckets(Histogram *histogram, char** labels) {
 }
 
 int new_histogram_vec(char* name, char* help, char** label_names, int nlabels, double* bucket_margins, int nbuckets) {
-	double previous_margin = 0;
 	int i=0;
 	// Initialize a hash table
 	// TODO: do it only once (set a lock)
@@ -177,10 +176,11 @@ int new_histogram_vec(char* name, char* help, char** label_names, int nlabels, d
 		return FALSE;
 	}
 	fprintf(stderr, "new_histogram_vec succeeded\n");
+	return TRUE;
 }
 
-int observe_histogram(char* name, char** labels, int nlabels, double value) {
-	int i, val_index;
+int observe_histogram(char* name, char** labels, unsigned int nlabels, double value) {
+	unsigned int i, val_index;
 	// TODO: check if number of labels is valid
 	Histogram *histogram = g_hash_table_lookup(metrics_storage, name);
 	if(histogram == NULL) {
@@ -247,7 +247,7 @@ void msnprintf(ExportContext* context, const char *format, ...) {
 typedef void (* labels_callback) ();
 
 void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val, labels_callback callback) {
-	int i;
+	unsigned int i;
 	if(pmetric->number_labels > 0) {
 		(*context->printf_callback)(context, "{");
 		for(i=0; i < (*pmetric).number_labels; i++) {
@@ -261,7 +261,7 @@ void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val, l
 }
 
 void export_labeled_metric(gpointer label_name, gpointer gcontext) {
-	int i, j, result;
+	unsigned int i, j;
 	ExportContext* context = (ExportContext*) gcontext;
 	Metric *pmetric = context->current_metric;
 	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
@@ -332,9 +332,9 @@ int internal_export_metrics(char* buffer, int max_size, printf_callback callback
 }
 
 int export_metrics(char* buffer, int max_size) {
-	return internal_export_metrics(buffer, max_size, msnprintf);
+	return internal_export_metrics(buffer, max_size, (printf_callback) msnprintf);
 }
 
 int print_metrics() {
-	return internal_export_metrics(NULL, 0, do_fprintf);
+	return internal_export_metrics(NULL, 0, (printf_callback) do_fprintf);
 }

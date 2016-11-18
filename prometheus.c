@@ -244,37 +244,18 @@ void msnprintf(ExportContext* context, const char *format, ...) {
 	shift(context, result);
 }
 
-void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val) {
-	int i;
-	if(pmetric->number_labels > 0) {
-		(*context->printf_callback)(context, "{");
-		for(i=0; i < (*pmetric).number_labels; i++) {
-			(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-		}
-		(*context->printf_callback)(context, "}");
-	}
-}
+typedef void (* labels_callback) ();
 
-void print_labels_and_LEs(Metric *pmetric, ExportContext* context, ConcreteValue *val, Buckets* buckets, int j) {
+void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val, labels_callback callback) {
 	int i;
 	if(pmetric->number_labels > 0) {
 		(*context->printf_callback)(context, "{");
 		for(i=0; i < (*pmetric).number_labels; i++) {
 			(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 		}
-		(*context->printf_callback)(context, "le=\"%f\",", buckets->internal_buckets[j]->margin);
-		(*context->printf_callback)(context, "}");
-	}
-}
-
-void print_labels_and_Inf(Metric *pmetric, ExportContext* context, ConcreteValue *val, Buckets* buckets) {
-	int i;
-	if(pmetric->number_labels > 0) {
-		(*context->printf_callback)(context, "{");
-		for(i=0; i < (*pmetric).number_labels; i++) {
-			(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+		if(callback != NULL) {
+			(*callback)();
 		}
-		(*context->printf_callback)(context, "le=\"+Inf\",");
 		(*context->printf_callback)(context, "}");
 	}
 }
@@ -301,20 +282,24 @@ void export_labeled_metric(gpointer label_name, gpointer gcontext) {
 			Buckets* buckets = (Buckets*) val->value;
 			for(j=0; j < (buckets->number_buckets); j++) {
 				(*context->printf_callback)(context, "%s_bucket", (*pmetric).name);
-				print_labels_and_LEs(pmetric, context, val, buckets, j);
+				print_labels(pmetric, context, val, ( { void label_callback() {
+						(*context->printf_callback)(context, "le=\"%f\",", buckets->internal_buckets[j]->margin);
+					} label_callback; } ));
 				cumulative_count += buckets->internal_buckets[j]->count;
 				(*context->printf_callback)(context, " %f\n", (float) cumulative_count);
 			}
 
 
 			(*context->printf_callback)(context, "%s_bucket", (*pmetric).name);
-			print_labels_and_Inf(pmetric, context, val, buckets);
+			print_labels(pmetric, context, val, ( { void label_callback() {
+				(*context->printf_callback)(context, "le=\"+Inf\",");
+			} label_callback; } ));
 			(*context->printf_callback)(context, " %f\n", (float) buckets->total_count);
 			(*context->printf_callback)(context, "%s_count", (*pmetric).name);
-			print_labels(pmetric, context, val);
+			print_labels(pmetric, context, val, NULL);
 			(*context->printf_callback)(context, " %f\n", (float) buckets->total_count);
 			(*context->printf_callback)(context, "%s_sum", (*pmetric).name);
-			print_labels(pmetric, context, val);
+			print_labels(pmetric, context, val, NULL);
 			(*context->printf_callback)(context, " %f\n", buckets->total_sum);
 		}
 	} else {

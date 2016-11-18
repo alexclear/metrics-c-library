@@ -61,7 +61,7 @@ int new_counter_vec(char* name, char* help, char** label_names, int nlabels) {
 	(*counter).name = name;
 	(*counter).type = METRIC_TYPE_COUNTER;
 	(*counter).number_labels = nlabels;
-	(*counter).labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
+	(*counter).labeled_metric = g_hash_table_new((GHashFunc) &g_string_hash, (GEqualFunc) &g_string_equal);
 	(*counter).label_names = malloc(sizeof(char*) * nlabels);
 	for(i=0; i<nlabels; i++) {
 		(*counter).label_names[i] = malloc(strlen(label_names[i]) + 1);
@@ -171,7 +171,7 @@ int new_histogram_vec(char* name, char* help, char** label_names, int nlabels, d
 		(*histogram).metric.label_names[i] = malloc(strlen(label_names[i]) + 1);
 		strncpy((*histogram).metric.label_names[i], label_names[i], strlen(label_names[i]) + 1);
 	}
-	(*histogram).metric.labeled_metric = g_hash_table_new(&g_string_hash, &g_string_equal);
+	(*histogram).metric.labeled_metric = g_hash_table_new((GHashFunc) &g_string_hash, (GEqualFunc) &g_string_equal);
 	if(g_hash_table_insert(metrics_storage, name, histogram) == FALSE) {
 		return FALSE;
 	}
@@ -221,6 +221,7 @@ typedef struct {
 } ExportContext;
 
 void do_fprintf(ExportContext* context, const char *format, ...) {
+	(void)(context);
 	va_list arglist;
 	va_start(arglist,format);
 	vfprintf(stderr, format, arglist);

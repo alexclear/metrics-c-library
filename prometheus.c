@@ -245,7 +245,11 @@ void msnprintf(ExportContext* context, const char *format, ...) {
 	shift(context, result);
 }
 
+#ifndef __clang__
+typedef void (* labels_callback) ();
+#else
 typedef void (^ labels_callback) ();
+#endif
 
 void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val, labels_callback callback) {
 	unsigned int i;
@@ -255,7 +259,12 @@ void print_labels(Metric *pmetric, ExportContext* context, ConcreteValue *val, l
 			(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 		}
 		if(callback != NULL) {
+#ifndef __clang__
+			(*callback)();
+#else
 			callback();
+#endif
+
 		}
 		(*context->printf_callback)(context, "}");
 	}

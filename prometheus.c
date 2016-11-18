@@ -210,97 +210,22 @@ int observe_histogram(char* name, char** labels, int nlabels, double value) {
 	return TRUE;
 }
 
-void print_labeled_metric(gpointer label_name, gpointer gpmetric) {
-	int i, j;
-	Metric *pmetric = (Metric*) gpmetric;
-	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
-	if(val != NULL) {
-		if(strcmp((*pmetric).type, METRIC_TYPE_COUNTER) == 0) {
-			fprintf(stderr, "%s", (*pmetric).name);
-			if(pmetric->number_labels > 0) {
-				fprintf(stderr, "{");
-				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-				}
-				fprintf(stderr, "} ");
-			}
-			fprintf(stderr, "%f\n", (float) *((int*) val->value));
-		}
-		if(strcmp((*pmetric).type, METRIC_TYPE_HISTOGRAM) == 0) {
-			int cumulative_count = 0;
-			Buckets* buckets = (Buckets*) val->value;
-			for(j=0; j < (buckets->number_buckets); j++) {
-				fprintf(stderr, "%s_bucket", (*pmetric).name);
-				if(pmetric->number_labels > 0) {
-					fprintf(stderr, "{");
-					for(i=0; i < (*pmetric).number_labels; i++) {
-						fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-					}
-					fprintf(stderr, "le=\"%f\",", buckets->internal_buckets[j]->margin);
-					fprintf(stderr, "}");
-				}
-				cumulative_count += buckets->internal_buckets[j]->count;
-				fprintf(stderr, " %f\n", (float) cumulative_count);
-			}
-
-
-			fprintf(stderr, "%s_bucket", (*pmetric).name);
-			if(pmetric->number_labels > 0) {
-				fprintf(stderr, "{");
-				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-				}
-				fprintf(stderr, "le=\"+Inf\",");
-				fprintf(stderr, "}");
-			}
-			fprintf(stderr, " %f\n", (float) buckets->total_count);
-			fprintf(stderr, "%s_count", (*pmetric).name);
-			if(pmetric->number_labels > 0) {
-				fprintf(stderr, "{");
-				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-				}
-				fprintf(stderr, "}");
-			}
-			fprintf(stderr, " %f\n", (float) buckets->total_count);
-			fprintf(stderr, "%s_sum", (*pmetric).name);
-			if(pmetric->number_labels > 0) {
-				fprintf(stderr, "{");
-				for(i=0; i < (*pmetric).number_labels; i++) {
-					fprintf(stderr, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
-				}
-				fprintf(stderr, "}");
-			}
-			fprintf(stderr, " %f\n", buckets->total_sum);
-		}
-	} else {
-		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");
-		exit(-1);
-	}
-}
-
-void print_metric(gpointer key, gpointer user_data) {
-	Metric *metric = g_hash_table_lookup(metrics_storage, key);
-	if(metric == NULL) {
-		fprintf(stderr, "Can't find a metric named %s\n", (char*) key);
-		exit(-1);
-	}
-	fprintf(stderr, "# HELP %s %s\n", (char*) key, metric->help);
-	fprintf(stderr, "# TYPE %s %s\n", (char*) key, metric->type);
-	g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), print_labeled_metric, metric);
-}
-
-int print_metrics() {
-	g_list_foreach(g_hash_table_get_keys(metrics_storage), print_metric, NULL);
-	return TRUE;
-}
+typedef void (* printf_callback) (void* context, const char *format, ...);
 
 typedef struct {
 	int max_size;
 	char *buffer;
 	int result;
 	Metric *current_metric;
+	printf_callback printf_callback;
 } ExportContext;
+
+void do_fprintf(ExportContext* context, const char *format, ...) {
+	va_list arglist;
+	va_start(arglist,format);
+	vfprintf(stderr, format, arglist);
+	va_end(arglist);
+}
 
 void shift(ExportContext* context, int result) {
 	context->result += result;
@@ -326,62 +251,62 @@ void export_labeled_metric(gpointer label_name, gpointer gcontext) {
 	ConcreteValue *val = g_hash_table_lookup((*pmetric).labeled_metric, label_name);
 	if(val != NULL) {
 		if(strcmp((*pmetric).type, METRIC_TYPE_COUNTER) == 0) {
-			msnprintf(context, "%s", (*pmetric).name);
+			(*context->printf_callback)(context, "%s", (*pmetric).name);
 			if(pmetric->number_labels > 0) {
-				msnprintf(context, "{");
+				(*context->printf_callback)(context, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+					(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
-				msnprintf(context, "} ");
+				(*context->printf_callback)(context, "} ");
 			}
-			msnprintf(context, "%f\n", (float) *((int*) val->value));
+			(*context->printf_callback)(context, "%f\n", (float) *((int*) val->value));
 		}
 		if(strcmp((*pmetric).type, METRIC_TYPE_HISTOGRAM) == 0) {
 			int cumulative_count = 0;
 			Buckets* buckets = (Buckets*) val->value;
 			for(j=0; j < (buckets->number_buckets); j++) {
-				msnprintf(context, "%s_bucket", (*pmetric).name);
+				(*context->printf_callback)(context, "%s_bucket", (*pmetric).name);
 				if(pmetric->number_labels > 0) {
-					msnprintf(context, "{");
+					(*context->printf_callback)(context, "{");
 					for(i=0; i < (*pmetric).number_labels; i++) {
-						msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+						(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 					}
-					msnprintf(context, "le=\"%f\",", buckets->internal_buckets[j]->margin);
-					msnprintf(context, "}");
+					(*context->printf_callback)(context, "le=\"%f\",", buckets->internal_buckets[j]->margin);
+					(*context->printf_callback)(context, "}");
 				}
 				cumulative_count += buckets->internal_buckets[j]->count;
-				msnprintf(context, " %f\n", (float) cumulative_count);
+				(*context->printf_callback)(context, " %f\n", (float) cumulative_count);
 			}
 
 
-			msnprintf(context, "%s_bucket", (*pmetric).name);
+			(*context->printf_callback)(context, "%s_bucket", (*pmetric).name);
 			if(pmetric->number_labels > 0) {
-				msnprintf(context, "{");
+				(*context->printf_callback)(context, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+					(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
-				msnprintf(context, "le=\"+Inf\",");
-				msnprintf(context, "}");
+				(*context->printf_callback)(context, "le=\"+Inf\",");
+				(*context->printf_callback)(context, "}");
 			}
-			msnprintf(context, " %f\n", (float) buckets->total_count);
-			msnprintf(context, "%s_count", (*pmetric).name);
+			(*context->printf_callback)(context, " %f\n", (float) buckets->total_count);
+			(*context->printf_callback)(context, "%s_count", (*pmetric).name);
 			if(pmetric->number_labels > 0) {
-				msnprintf(context, "{");
+				(*context->printf_callback)(context, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+					(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
-				msnprintf(context, "}");
+				(*context->printf_callback)(context, "}");
 			}
-			msnprintf(context, " %f\n", (float) buckets->total_count);
-			msnprintf(context, "%s_sum", (*pmetric).name);
+			(*context->printf_callback)(context, " %f\n", (float) buckets->total_count);
+			(*context->printf_callback)(context, "%s_sum", (*pmetric).name);
 			if(pmetric->number_labels > 0) {
-				msnprintf(context, "{");
+				(*context->printf_callback)(context, "{");
 				for(i=0; i < (*pmetric).number_labels; i++) {
-					msnprintf(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
+					(*context->printf_callback)(context, "%s=\"%s\",", pmetric->label_names[i], val->labels[i]);
 				}
-				msnprintf(context, "}");
+				(*context->printf_callback)(context, "}");
 			}
-			msnprintf(context, " %f\n", buckets->total_sum);
+			(*context->printf_callback)(context, " %f\n", buckets->total_sum);
 		}
 	} else {
 		fprintf(stderr, "Failed to lookup a labeled metric value, it is NULL\n");
@@ -396,17 +321,26 @@ void export_metric(gpointer key, gpointer user_data) {
 		fprintf(stderr, "Can't find a metric named %s\n", (char*) key);
 		exit(-1);
 	}
-	msnprintf(context, "# HELP %s %s\n", (char*) key, metric->help);
-	msnprintf(context, "# TYPE %s %s\n", (char*) key, metric->type);
+	(*context->printf_callback)(context, "# HELP %s %s\n", (char*) key, metric->help);
+	(*context->printf_callback)(context, "# TYPE %s %s\n", (char*) key, metric->type);
 	context->current_metric = metric;
 	g_list_foreach(g_hash_table_get_keys(metric->labeled_metric), export_labeled_metric, context);
 }
 
-int export_metrics(char* buffer, int max_size) {
+int internal_export_metrics(char* buffer, int max_size, printf_callback callback) {
 	ExportContext context;
 	context.max_size = max_size;
 	context.result = 0;
 	context.buffer = buffer;
+	context.printf_callback = callback;
 	g_list_foreach(g_hash_table_get_keys(metrics_storage), export_metric, &context);
 	return context.result;
+}
+
+int export_metrics(char* buffer, int max_size) {
+	return internal_export_metrics(buffer, max_size, msnprintf);
+}
+
+int print_metrics() {
+	return internal_export_metrics(NULL, 0, do_fprintf);
 }
